@@ -63,10 +63,36 @@ class PercentileSamplerTest < Minitest::Test
       histogram.bins.map{|bin| [bin.count, bin.value] }
   end
 
-  def test_metrics_saves_histogram_to_store
+  def test_metrics_saves_finished_minutes_to_store
+    previous_minute = ScoutApm::StoreReportingPeriodTimestamp.new(time - 60)
+    current_minute = ScoutApm::StoreReportingPeriodTimestamp.new(time)
+    histograms[previous_minute].add("foo", 10)
+    histograms[current_minute].add("foo", 20)
+
     store = mock
-    store.expects(:track_histograms!)
-    subject.metrics(ScoutApm::StoreReportingPeriodTimestamp.new(time), store)
+    store.expects(:track_histograms!).with { |reports, options|
+      options[:timestamp] == previous_minute && reports.map { |report| report.histogram.total } == [1]
+    }
+    subject.metrics(current_minute, store)
+
+    assert histograms.key?(current_minute)
+  end
+
+  def test_metrics_reports_requests_recorded_after_the_tick_in_the_same_minute
+    store = ScoutApm::Store.new(@context)
+    store.add_sampler(PercentileSampler)
+    minute = ScoutApm::StoreReportingPeriodTimestamp.new(time)
+
+    Time.stubs(:now).returns(time)
+    histograms[minute].add("foo", 100)
+    store.tick!
+    histograms[minute].add("foo", 900)
+
+    Time.stubs(:now).returns(time + 60)
+    store.tick!
+
+    report = store.instance_variable_get(:@reporting_periods)[minute].histograms.first
+    assert_equal [[1, 100], [1, 900]], report.histogram.bins.map { |bin| [bin.count, bin.value] }
   end
 
 

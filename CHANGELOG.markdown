@@ -1,5 +1,7 @@
 # Pending
 
+- Report endpoint percentiles for the whole minute instead of only the requests finished before the agent's per-minute tick
+
 # 6.3.2
 
 - Build the per-minute debug dumps of metrics, slow traces and auto-instrument histograms only when debug logging is enabled (#639)
