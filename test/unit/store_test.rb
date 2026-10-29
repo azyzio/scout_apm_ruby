@@ -51,6 +51,49 @@ class StoreTest < Minitest::Test
     reports = Array(layaway.rps_written).flat_map(&:histograms)
     assert_equal [["Controller/users/index", 1]], reports.map { |report| [report.name, report.histogram.total] }
   end
+
+  def test_write_includes_percentiles_recorded_after_the_tick
+    minute = Time.utc(2026, 10, 30, 12, 0, 0)
+    context = ScoutApm::AgentContext.new
+    s = ScoutApm::Store.new(context)
+    s.add_sampler(ScoutApm::Instruments::PercentileSampler)
+    layaway = FakeFailingLayaway.new
+
+    Time.stubs(:now).returns(minute + 10)
+    context.request_histograms_by_time[s.current_timestamp].add("Controller/users/index", 100)
+    s.tick!
+    Time.stubs(:now).returns(minute + 50)
+    context.request_histograms_by_time[s.current_timestamp].add("Controller/users/index", 900)
+
+    Time.stubs(:now).returns(minute + 70)
+    s.tick!
+    s.write_to_layaway(layaway)
+
+    report = layaway.rps_written.flat_map(&:histograms).first
+    assert_equal [[1, 100], [1, 900]], report.histogram.bins.map { |bin| [bin.count, bin.value] }
+  end
+
+  def test_write_just_after_the_tick_crosses_a_minute_writes_the_minute_once
+    minute = Time.utc(2026, 10, 30, 12, 0, 0)
+    context = ScoutApm::AgentContext.new
+    s = ScoutApm::Store.new(context)
+    s.add_sampler(ScoutApm::Instruments::PercentileSampler)
+    layaway = FakeFailingLayaway.new
+
+    Time.stubs(:now).returns(minute + 30)
+    s.track_one!("Controller", "users/index", 100)
+    context.request_histograms_by_time[s.current_timestamp].add("Controller/users/index", 100)
+
+    [59.999, 60.001, 119.999, 120.001].each_slice(2) do |tick_at, write_at|
+      Time.stubs(:now).returns(minute + tick_at)
+      s.tick!
+      Time.stubs(:now).returns(minute + write_at)
+      s.write_to_layaway(layaway)
+    end
+
+    written = layaway.rps_written.select { |rp| rp.timestamp.to_time == minute }
+    assert_equal [[1, [1]]], written.map { |rp| [rp.metrics_payload.size, rp.histograms.map { |h| h.histogram.total }] }
+  end
 end
 
 class StoreReportingPeriodTest < Minitest::Test

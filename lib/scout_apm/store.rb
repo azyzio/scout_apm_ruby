@@ -96,12 +96,13 @@ module ScoutApm
     def write_to_layaway(layaway, force=false)
       logger.debug("Writing to layaway#{" (Forced)" if force}")
 
-      flush_samplers if force
+      cutoff = current_timestamp
+      finished = lambda { |time| force || time.timestamp < cutoff.timestamp }
+
+      flush_samplers(&finished)
 
       to_report = @mutex.synchronize {
-        @reporting_periods.select { |time, rp|
-          force || (time.timestamp < current_timestamp.timestamp)
-        }
+        @reporting_periods.select { |time, rp| finished.call(time) }
       }
 
       to_report.each { |time, rp| write_reporting_period(layaway, time, rp) }
@@ -142,10 +143,10 @@ module ScoutApm
     end
     private :collect_samplers
 
-    def flush_samplers
+    def flush_samplers(&finished)
       @samplers.each do |sampler|
         begin
-          sampler.flush(self) if sampler.respond_to?(:flush)
+          sampler.flush(self, &finished) if sampler.respond_to?(:flush)
         rescue => e
           logger.info "Error flushing #{sampler.human_name}"
           logger.debug "#{e.message}\n\t#{e.backtrace.join("\n\t")}"

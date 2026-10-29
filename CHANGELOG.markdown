@@ -1,6 +1,6 @@
 # Pending
 
-- Report endpoint percentiles for the whole minute instead of only the requests finished before the agent's per-minute tick
+- Report endpoint percentiles for the whole minute instead of only the requests recorded before the agent's per-minute tick
 
 # 6.3.2
 
