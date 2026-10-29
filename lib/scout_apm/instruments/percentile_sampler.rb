@@ -35,10 +35,11 @@ module ScoutApm
       end
 
       def metrics(timestamp, store)
-        finished = histograms.keys.select { |time| time.timestamp < timestamp.timestamp }
-        finished.each do |time|
-          store.track_histograms!(percentiles(time), :timestamp => time)
-        end
+        track(histograms.keys.select { |time| time.timestamp < timestamp.timestamp }, store)
+      end
+
+      def flush(store)
+        track(histograms.keys, store)
       end
 
       def percentiles(time)
@@ -53,6 +54,14 @@ module ScoutApm
         end
 
         result
+      end
+
+      private
+
+      def track(times, store)
+        times.each do |time|
+          store.track_histograms!(percentiles(time), :timestamp => time)
+        end
       end
     end
   end

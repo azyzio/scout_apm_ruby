@@ -38,6 +38,19 @@ class StoreTest < Minitest::Test
 
     assert_equal({}, s.instance_variable_get('@reporting_periods'))
   end
+
+  def test_forced_write_includes_current_minute_percentiles
+    context = ScoutApm::AgentContext.new
+    s = ScoutApm::Store.new(context)
+    s.add_sampler(ScoutApm::Instruments::PercentileSampler)
+    context.request_histograms_by_time[s.current_timestamp].add("Controller/users/index", 100)
+
+    layaway = FakeFailingLayaway.new
+    s.write_to_layaway(layaway, true)
+
+    reports = Array(layaway.rps_written).flat_map(&:histograms)
+    assert_equal [["Controller/users/index", 1]], reports.map { |report| [report.name, report.histogram.total] }
+  end
 end
 
 class StoreReportingPeriodTest < Minitest::Test
